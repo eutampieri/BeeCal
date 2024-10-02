@@ -50,11 +50,12 @@ app.set("view engine", "handlebars");
 /**
  * Create DB tables and migrate CSV
  */
-db.run("CREATE TABLE IF NOT EXISTS enrollments (id TEXT, date INTEGER, type TEXT, course TEXT, year INTEGER, curriculum TEXT)");
-db.run("CREATE TABLE IF NOT EXISTS requested_lectures (enrollment_id TEXT, lecture_id TEXT)");
-db.run("CREATE TABLE IF NOT EXISTS hits (date INTEGER, enrollment_id TEXT, user_agent TEXT)");
-db.run("CREATE TABLE IF NOT EXISTS token(id TEXT, description TEXT)");
-db.run("CREATE TABLE IF NOT EXISTS cache(id TEXT, value TEXT, expiration INTEGER)");
+db.run("CREATE TABLE IF NOT EXISTS enrollments (id TEXT, date INTEGER, type TEXT, course TEXT, year INTEGER, curriculum TEXT, PRIMARY KEY(id))");
+db.run("CREATE TABLE IF NOT EXISTS requested_lectures (enrollment_id TEXT, lecture_id TEXT, CONSTRAINT fk_enrollment FOREIGN KEY(enrollment_id) REFERENCES enrollments(id))");
+db.run("CREATE TABLE IF NOT EXISTS hits (date INTEGER, enrollment_id TEXT, user_agent TEXT, PRIMARY KEY(date,enrollment_id), CONSTRAINT fk_enrollment FOREIGN KEY(enrollment_id) REFERENCES enrollments(id))");
+db.run("CREATE TABLE IF NOT EXISTS token(id TEXT, description TEXT, PRIMARY KEY(id))");
+db.run("CREATE TABLE IF NOT EXISTS cache(id TEXT, value TEXT, expiration INTEGER, PRIMARY KEY(id), CONSTRAINT fk_enrollment FOREIGN KEY(id) REFERENCES enrollments(id))");
+db.run("CREATE INDEX IF NOT EXISTS enrollment_lectures ON requested_lectures(enrollment_id)");
 db.close()
 
 //start server

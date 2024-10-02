@@ -4,11 +4,12 @@ import * as hbs from "express-handlebars"
 import sqlite3 from "sqlite3"
 import { router } from "./controller.js"
 import { __dirname } from "./utils.js"
+import { WrappedDb } from "./db.js"
 //import * as segfaultHandler from "node-segfault-handler";
 
 //segfaultHandler.registerHandler();
 
-var db = new sqlite3.Database("./logs/data.db");
+var db = new WrappedDb(new sqlite3.Database("./logs/data.db"));
 var app = express();
 
 function tokenMiddleware(correct) {
@@ -50,13 +51,15 @@ app.set("view engine", "handlebars");
 /**
  * Create DB tables and migrate CSV
  */
-db.run("CREATE TABLE IF NOT EXISTS enrollments (id TEXT, date INTEGER, type TEXT, course TEXT, year INTEGER, curriculum TEXT, PRIMARY KEY(id))");
-db.run("CREATE TABLE IF NOT EXISTS requested_lectures (enrollment_id TEXT, lecture_id TEXT, CONSTRAINT fk_enrollment FOREIGN KEY(enrollment_id) REFERENCES enrollments(id))");
-db.run("CREATE TABLE IF NOT EXISTS hits (date INTEGER, enrollment_id TEXT, user_agent TEXT, PRIMARY KEY(date,enrollment_id), CONSTRAINT fk_enrollment FOREIGN KEY(enrollment_id) REFERENCES enrollments(id))");
-db.run("CREATE TABLE IF NOT EXISTS token(id TEXT, description TEXT, PRIMARY KEY(id))");
-db.run("CREATE TABLE IF NOT EXISTS cache(id TEXT, value TEXT, expiration INTEGER, PRIMARY KEY(id), CONSTRAINT fk_enrollment FOREIGN KEY(id) REFERENCES enrollments(id))");
-db.run("CREATE INDEX IF NOT EXISTS enrollment_lectures ON requested_lectures(enrollment_id)");
-db.close()
+(async function() {
+    await db.run("CREATE TABLE IF NOT EXISTS enrollments (id TEXT, date INTEGER, type TEXT, course TEXT, year INTEGER, curriculum TEXT, PRIMARY KEY(id))");
+    await db.run("CREATE TABLE IF NOT EXISTS requested_lectures (enrollment_id TEXT, lecture_id TEXT, CONSTRAINT fk_enrollment FOREIGN KEY(enrollment_id) REFERENCES enrollments(id))");
+    await db.run("CREATE TABLE IF NOT EXISTS hits (date INTEGER, enrollment_id TEXT, user_agent TEXT, PRIMARY KEY(date,enrollment_id), CONSTRAINT fk_enrollment FOREIGN KEY(enrollment_id) REFERENCES enrollments(id))");
+    await db.run("CREATE TABLE IF NOT EXISTS token(id TEXT, description TEXT, PRIMARY KEY(id))");
+    await db.run("CREATE TABLE IF NOT EXISTS cache(id TEXT, value TEXT, expiration INTEGER, PRIMARY KEY(id), CONSTRAINT fk_enrollment FOREIGN KEY(id) REFERENCES enrollments(id))");
+    await db.run("CREATE INDEX IF NOT EXISTS enrollment_lectures ON requested_lectures(enrollment_id)");
+    await db.close();
+})();
 
 //start server
 app.listen(app.get("port"), app.get("bind-addr"), () => {

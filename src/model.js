@@ -4,12 +4,13 @@ import sqlite3 from "sqlite3";
 import rb from "randombytes";
 import b32 from "base32.js";
 import { Tecla } from "./tecla.js";
+import { WrappedDb } from "./db.js";
 
 const ONE_UNIX_DAY = 24 * 3600;
 const DB_FILE = "./logs/data.db";
 
 // Create a single instance of the database connection
-const db = new sqlite3.Database(DB_FILE);
+const db = new WrappedDb(new sqlite3.Database(DB_FILE));
 process.on("exit", () => {
     db.close();
 });
@@ -37,45 +38,16 @@ export function generateId(length) {
 
 export function log_hit(id, ua) {
     let query = "INSERT INTO hits VALUES (?, ?, ?)";
-    return new Promise((resolve, reject) => {
-        db.run(query, new Date().getTime(), id, ua, function (error) {
-            if (error) {
-                reject(error);
-            } else {
-                resolve();
-            }
-        });
-    });
+    return db.run(query, new Date().getTime(), id, ua);
 }
 
 export function log_enrollment(params, lectures) {
     let enrollment_query = "INSERT INTO enrollments VALUES(?, ?, ?, ?, ?, ?)";
     let lectures_query = "INSERT INTO requested_lectures VALUES(?, ?)";
 
-    return new Promise((resolve, reject) => {
-        db.run(enrollment_query, params, function (error) {
-            if (error) {
-                reject(error);
-            } else {
-                // Use Promise.all to handle multiple asynchronous calls
-                Promise.all(
-                    lectures.map((lecture) =>
-                        new Promise((res, rej) => {
-                            db.run(lectures_query, params[0], lecture, function (err) {
-                                if (err) {
-                                    rej(err);
-                                } else {
-                                    res();
-                                }
-                            });
-                        })
-                    )
-                )
-                    .then(resolve)
-                    .catch(reject);
-            }
-        });
-    });
+    return db.run(enrollment_query, params).then(_ => Promise.all(
+        lectures.map((lecture) => { db.run(lectures_query, params[0], lecture); })
+    ));
 }
 
 export async function getTimetable(universityId, curriculum, year) {
@@ -107,11 +79,7 @@ export function checkEnrollment(uuid_value) {
         return new Promise((res) => res(false));
     } else {
         let query = "SELECT * FROM enrollments WHERE id = ?";
-        return new Promise((res) => {
-            db.get(query, uuid_value, function (e, x) {
-                res(x !== undefined);
-            });
-        });
+        return db.get(query, uuid_value).then(x => x !== undefined);
     }
 }
 
@@ -129,34 +97,19 @@ export async function getICalendarEvents(id, ua, alert) {
         } else {
             // Use the existing database connection
             db.run("DELETE FROM cache WHERE expiration < strftime('%s', 'now')");
-            let cache_check_promise = new Promise((res, rej) =>
-                db.get("SELECT value FROM cache WHERE id = ?", id, function (e, result) {
-                    if (result === undefined) {
-                        res(false);
-                    } else {
-                        res(result["value"]);
-                    }
-                })
-            );
-            let vcalendar = await cache_check_promise;
+            let vcalendar = await db.get("SELECT value FROM cache WHERE id = ?", id).then(x => x.value);
 
             if (vcalendar === false) {
                 let query_enrollments = "SELECT * FROM enrollments WHERE id = ?";
-                let enrollment_promise = new Promise((res, rej) =>
-                    db.get(query_enrollments, id, function (e, enrollments_info) {
-                        res(enrollments_info);
-                    })
-                );
-                let enrollments_info = await enrollment_promise;
+                let enrollments_info = await db.get(query_enrollments, id);
                 let university = enrollments_info["type"];
-                let course = enrollments_info["course"];
                 let year = enrollments_info["year"];
                 let curriculum = enrollments_info["curriculum"];
 
                 let tecla = Tecla.getUniversityById(university);
 
                 let query_lectures = "SELECT lecture_id FROM requested_lectures WHERE enrollment_id = ?";
-                let lectures = await new Promise((res, rej) => db.all(query_lectures, id, (e, lectures) => { res(lectures) }));
+                let lectures = await db.all(query_lectures, id);
 
                 let timetable = await tecla.getTimetableWithTeaching(curriculum, lectures.map((x) => x["lecture_id"]), year)
 
